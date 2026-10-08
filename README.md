@@ -75,11 +75,13 @@ the full roadmap.
 
 ## Status
 
-🚧 **Phase 0 — Engineering Foundation** (repo scaffolding, governance files, config/DB
-basics, router eval harness, first CLI). See the roadmap in [`docs/PLAN.md`](docs/PLAN.md).
+✅ **v0.1.0 — Foundation shipped** (Cargo workspace, `machie-config`, `machie-db`,
+`machie` CLI with status/init/config-check/session commands, ADR-0001..0004).
+Next: v0.1.1 release polish (packaging + install docs), then v0.2.x core intelligence.
+See the roadmap in [`docs/PLAN.md`](docs/PLAN.md).
 
 ```
-v0.1.x  Foundation (workspace, CI, ADRs, config, database, eval harness, `machie` CLI)
+v0.1.x  Foundation (workspace, ADRs, config, database, `machie` CLI)   ← you are here
 v0.2.x  Core intelligence (structured tasks, ANSWER/SEARCH/ACTION router, provider traits)
 v0.3.x  Local inference (llama.cpp provider, runtime basics, CLI chat)
 v0.4.x  Documents (ingestion, chunking, FTS5, citations) → MVP checkpoint
@@ -89,49 +91,49 @@ v0.5.x+ RAG → tools & permissions → web → gateways → presentation layer 
 ## Getting Machie (Install / Upgrade / Uninstall)
 
 *This section is the only part of the docs you ever need. It is kept up to date at every
-release with exact, copy-pasteable commands. Until v0.1.5 ships the `machie` CLI binary,
-there is nothing to install.*
+release with exact, copy-pasteable commands.*
 
-### Install (from a tagged release — recommended)
-
-```sh
-# 1. Grab the latest release for your OS from:
-#    https://github.com/<your-username>/machie/releases/latest
-# 2. Unpack it anywhere, e.g.:
-tar -xzf machie-<version>-<os>.tar.gz
-# 3. Put the binary on your PATH (pick one):
-sudo mv machie /usr/local/bin/          # Linux/macOS
-mv machie.exe %USERPROFILE%\bin\        # Windows (folder must be on PATH)
-# 4. Verify:
-machie version
-```
-
-### Install (build from source — if you prefer git over downloads)
+### Install (build from source — simplest right now)
 
 ```sh
-# Requires: Rust toolchain via rustup (https://rustup.rs — one command, then restart shell)
+# One-time: install the Rust toolchain (then restart your shell):
+curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
+
 git clone https://github.com/<your-username>/machie.git
-cd machie
-cargo build --release
-./target/release/machie version         # or: cargo install --path apps/cli
+cd machie && git checkout v0.1.0
+cargo install --path crates/machie-cli     # installs the `machie` binary on your PATH
+machie status                              # should print version, config and data paths
 ```
+
+### First run
+
+```sh
+machie init                                # writes a starter config (~/.config/machie/config.toml)
+machie session new "scratchpad"            # sessions work already; chat/tasks arrive in v0.2
+```
+
+Your data lives in one plain SQLite file plus TOML configs — locations shown by
+`machie status` and `machie db-path`. Nothing leaves your machine. Ever. (v0.1 has no network code at all.)
 
 ### Upgrade
 
 ```sh
-git pull && cargo build --release       # source installs
-cargo install --path apps/cli           # refreshes the installed binary
-# ...or just download the newest release tarball and replace the old binary.
+cd machie
+git pull && git checkout <newest tag>      # e.g. git tag --sort=-v:refname | head -3
+cargo install --path crates/machie-cli
+# ...or just download the newest release tarball when prebuilt binaries start shipping,
+# unpack it, and replace the old `machie` binary.
 ```
 
-Config and database survive upgrades automatically; migrations run on first launch after
-an upgrade. If an upgrade ever breaks something, `machie version` tells you what's running.
+Config and database survive upgrades automatically; schema migrations run on first launch
+after an upgrade. If a newer app ever wrote your database and you downgraded, Machie will
+tell you plainly instead of corrupting anything.
 
 ### Uninstall
 
 ```sh
-rm $(which machie)                      # remove the binary (Linux/macOS)
-rm -rf ~/.config/machie ~/.local/share/machie   # optional: remove config + data
+rm "$(which machie)"                               # remove the binary (Linux/macOS)
+rm -rf ~/.config/machie ~/.local/share/machie      # optional: remove config + data
 ```
 
 (Windows: delete the `machie.exe` you placed on PATH; data lives under

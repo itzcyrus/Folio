@@ -85,23 +85,22 @@ Each milestone below maps onto the spec's phases but cuts them into smaller, ind
 releasable pieces. ✅ = done, 🚧 = current, ☐ = planned.
 
 ### v0.1.x — Engineering Foundation (spec Phase 0)
-- ☐ **0.1.0** Repo scaffolding: Cargo workspace (`crates/*` created *as needed*, not
-  empty placeholder crates — deviation from Phase 0 item 1 noted in §5),
-  `.gitignore`, rustfmt/clippy config, minimal CI (build + test only), and the README
-  "Install / Upgrade / Uninstall" section written spoon-fed-style from day one (even if
-  it just says "nothing to install yet" — the section exists and stays current per §2.0).
-- ☐ **0.1.1** Governance files kept lean: ADR-0001 (tech stack),
-  ADR-0002 (gateway independence), ADR-0003 (product naming), plus this PLAN. No
+- ✅ **0.1.0** Repo scaffolding: Cargo workspace with real crates (`crates/machie-config`,
+  `crates/machie-db`, `crates/machie-cli`), `.gitignore`, size-tuned release profile, and the
+  README "Install / Upgrade / Uninstall" section rewritten for the shipped binary.
+  (rustfmt/clippy config and CI deferred to v0.1.1 — no gate depends on them.)
+- ✅ **0.1.1** Governance files kept lean: ADR-0001 (Rust primary), ADR-0002 (CLI-first),
+  ADR-0003 (versioned TOML config), ADR-0004 (SQLite migrations), plus this PLAN. No
   heavyweight DEFINITION_OF_DONE / REVIEW_GATES ceremony beyond "build+test green".
-- ☐ **0.1.2** `crates/config`: TOML config crate, `config_version = 1`, migration
-  registry stub, a couple of unit tests.
-- ☐ **0.1.3** `crates/database`: SQLite connection handling + migration tool + initial
-  empty migration, a couple of unit tests.
+- ✅ **0.1.2** `crates/machie-config`: TOML config crate, `config_version = 1`, layered
+  discovery (user dir → $MACHIE_CONFIG → ./machie.toml), deny-unknown-keys, 7 unit tests.
+- ✅ **0.1.3** `crates/machie-db`: SQLite (bundled) + forward-only `user_version` migrations,
+  WAL/FK pragmas, refuse-newer-schema safety, sessions/messages tables, 5 unit tests.
 - ☐ **0.1.4** Router eval sanity-check skeleton: `evals/router/*.jsonl` schema, loader +
   pass/fail reporter (reports 0/0 for now), CLI subcommand to run it manually.
-- ☐ **0.1.5** First CLI binary `machie` (thin `apps/cli`): `version`, `config show`,
-  `db init`, `evals run`. Proof the whole foundation wires together. **Phase 0
-  checkpoint:** stop & report status/deviations.
+- ✅ **0.1.5** First CLI binary `machie`: `status` (aka version), `init`, `config-check`,
+  `db-path`, `session new|list|show|note|delete`. Friendly errors, exit code 1, never panics.
+  **Phase 0 checkpoint:** done — tagged `v0.1.0`; deviations logged in §5 and here.
 
 ### v0.2.x — Core Intelligence (first slice of spec Phase 1)
 - ☐ **0.2.0** Structured Task Protocol types (Part C.4) + error model (Part K.4).

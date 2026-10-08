@@ -1,0 +1,15 @@
+[package]
+name = "machie-config"
+description = "Machie config discovery, parsing, defaults, and validation (versioned TOML)"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+toml = { workspace = true }
+serde = { workspace = true }
+thiserror = { workspace = true }
+dirs = { workspace = true }
+
+[dev-dependencies]
+tempfile = { workspace = true }

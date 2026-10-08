@@ -1,0 +1,15 @@
+[package]
+name = "machie-cli"
+description = "Machie command-line interface"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[[bin]]
+name = "machie"
+path = "src/main.rs"
+
+[dependencies]
+clap = { workspace = true }
+machie-config = { workspace = true }
+machie-db = { workspace = true }
