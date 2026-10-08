@@ -19,13 +19,26 @@ and roadmap. We rebuild against it incrementally instead of trying to implement 
 
 Mature and sensible: **one feature at a time, small updates, steadily to completion.**
 
-1. Pick one milestone from the plan → implement → `cargo build && cargo test` green → release.
+This is a vibe-coded hobby app with exactly one user. That means:
+
+- **You never review anything.** No code reading, no doc reading, no test running, no
+  approval steps. Everything in this repo is written by the agent, for the agent.
+- **You just use it, whenever you feel like it.** At checkpoints you may pull the repo or
+  grab the latest release binary and run `machie` normally. There is zero obligation to
+  do this after every change or feature — skip as many releases as you like.
+- **Bugs found in daily use → mention them → PATCH release.** That's the whole QA loop.
+- Because nobody smoke-tests on request, every tagged release is self-verified end-to-end
+  before it's tagged, and error messages are written to be helpful when things go wrong
+  unattended.
+
+Development conventions:
+
+1. Pick one milestone from the plan → implement → build + test + run it myself → tag a release.
 2. Every architecturally significant decision gets an ADR before it becomes code.
 3. Testing is minimal and pragmatic — unit tests where they're free, smoke tests per
-   crate, no test batteries, no coverage targets, no eval-accuracy gates. This is a
-   single-user hobby app: bugs get discovered by *using* it and fixed as PATCH releases.
-4. The router keeps a tiny hand-written sanity-check file under `evals/router/` that I
-   can run manually — it informs development but never blocks a release.
+   crate, no test batteries, no coverage targets, no eval-accuracy gates.
+4. The router keeps a tiny hand-written sanity-check file under `evals/router/` that the
+   agent can run manually — it informs development but never blocks a release.
 
 ## Principles (from the spec, kept non-negotiable)
 
@@ -73,7 +86,59 @@ v0.4.x  Documents (ingestion, chunking, FTS5, citations) → MVP checkpoint
 v0.5.x+ RAG → tools & permissions → web → gateways → presentation layer → everything else
 ```
 
-## Building
+## Getting Machie (Install / Upgrade / Uninstall)
+
+*This section is the only part of the docs you ever need. It is kept up to date at every
+release with exact, copy-pasteable commands. Until v0.1.5 ships the `machie` CLI binary,
+there is nothing to install.*
+
+### Install (from a tagged release — recommended)
+
+```sh
+# 1. Grab the latest release for your OS from:
+#    https://github.com/<your-username>/machie/releases/latest
+# 2. Unpack it anywhere, e.g.:
+tar -xzf machie-<version>-<os>.tar.gz
+# 3. Put the binary on your PATH (pick one):
+sudo mv machie /usr/local/bin/          # Linux/macOS
+mv machie.exe %USERPROFILE%\bin\        # Windows (folder must be on PATH)
+# 4. Verify:
+machie version
+```
+
+### Install (build from source — if you prefer git over downloads)
+
+```sh
+# Requires: Rust toolchain via rustup (https://rustup.rs — one command, then restart shell)
+git clone https://github.com/<your-username>/machie.git
+cd machie
+cargo build --release
+./target/release/machie version         # or: cargo install --path apps/cli
+```
+
+### Upgrade
+
+```sh
+git pull && cargo build --release       # source installs
+cargo install --path apps/cli           # refreshes the installed binary
+# ...or just download the newest release tarball and replace the old binary.
+```
+
+Config and database survive upgrades automatically; migrations run on first launch after
+an upgrade. If an upgrade ever breaks something, `machie version` tells you what's running.
+
+### Uninstall
+
+```sh
+rm $(which machie)                      # remove the binary (Linux/macOS)
+rm -rf ~/.config/machie ~/.local/share/machie   # optional: remove config + data
+```
+
+(Windows: delete the `machie.exe` you placed on PATH; data lives under
+`%APPDATA%\machie`.) Your data is plain files + one SQLite DB — inspect or back it up
+anytime before deleting.
+
+## Building (for whoever edits the code — i.e., the agent)
 
 Requires a Rust toolchain (`rustup`). Once the workspace exists:
 
