@@ -3,7 +3,7 @@ resolver = "2"
 members = ["crates/machie-config", "crates/machie-db", "crates/machie-cli"]
 
 [workspace.package]
-version = "0.1.0"
+version = "0.2.0"
 edition = "2021"
 license = "MIT"
 authors = ["Machie"]
@@ -12,6 +12,7 @@ repository = "https://github.com/OWNER/machie"
 [workspace.dependencies]
 toml = "0.8"
 serde = { version = "1", features = ["derive"] }
+serde_json = { version = "1", features = ["preserve_order"] }
 thiserror = "2"
 rusqlite = { version = "0.32", features = ["bundled"] }
 dirs = "5"

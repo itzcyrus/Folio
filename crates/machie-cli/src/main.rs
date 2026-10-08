@@ -3,6 +3,7 @@
 //! v0.1.0 surface: version / status / init / config-check / db-path / session commands.
 //! Design rule: bad input produces a friendly one-line error and exit code 1, never a panic.
 
+mod docs;
 mod sessions;
 
 use clap::{Parser, Subcommand};
@@ -37,10 +38,20 @@ enum Cmd {
         #[command(subcommand)]
         action: sessions::SessionCmd,
     },
+    /// Manage the document index (files stay on disk; Machie only indexes them)
+    Doc {
+        #[command(subcommand)]
+        action: docs::DocCmd,
+    },
+    /// Search indexed documents by content, filename, title and tags
+    Search {
+        #[command(subcommand)]
+        action: docs::SearchCmd,
+    },
 }
 
 fn version_string() -> &'static str {
-    concat!(env!("CARGO_PKG_VERSION"), " (v0.1 foundation)")
+    concat!(env!("CARGO_PKG_VERSION"), " (docs+search era)")
 }
 
 /// Resolve the database location from effective config.
@@ -78,15 +89,20 @@ fn main() {
             println!("  data dir: {}", cfg.data_dir().display());
             let dbfile = db_path(&cfg);
             match open_db_at(dbfile) {
-                Ok(db) => println!(
-                    "  database: {} (schema v{}, {} session(s))",
-                    db.path(),
-                    db.schema_version(),
-                    db.list_sessions().map(|v| v.len()).unwrap_or(0)
-                ),
+                Ok(db) => {
+                    println!(
+                        "  database: {} (schema v{}, {} session(s))",
+                        db.path(),
+                        db.schema_version(),
+                        db.list_sessions().map(|v| v.len()).unwrap_or(0)
+                    );
+                    println!(
+                        "  docs:     {} indexed document(s)",
+                        db.list_documents().map(|v| v.len()).unwrap_or(0)
+                    );
+                }
                 Err(e) => fail(e),
             }
-            println!("  next:     sessions are ready for real conversations in v0.2+");
         }
         Some(Cmd::Init) => {
             let path = Config::default_user_config_path();
@@ -119,6 +135,24 @@ fn main() {
                 Err(e) => fail(e),
             };
             if let Err(e) = sessions::run(action, &db) {
+                fail(e);
+            }
+        }
+        Some(Cmd::Doc { action }) => {
+            let db = match open_db_at(db_path(&cfg)) {
+                Ok(db) => db,
+                Err(e) => fail(e),
+            };
+            if let Err(e) = docs::run_doc(action, &db) {
+                fail(e);
+            }
+        }
+        Some(Cmd::Search { action }) => {
+            let db = match open_db_at(db_path(&cfg)) {
+                Ok(db) => db,
+                Err(e) => fail(e),
+            };
+            if let Err(e) = docs::run_search(action, &db) {
                 fail(e);
             }
         }

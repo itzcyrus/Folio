@@ -1,6 +1,1 @@
-/target
-**/*.rs.bk
-*.db
-*.sqlite
-.DS_Store
-.env
+(empty)

@@ -15,10 +15,20 @@ pub enum DbError {
     Sqlite(#[from] rusqlite::Error),
     #[error("database at {path} was created by a newer version of Machie (schema v{found}, this build supports up to v{max}); please upgrade Machie")]
     TooNew { path: String, found: u32, max: u32 },
+    #[error("{0} is not a regular file I can index")]
+    NotAFile(String),
+    #[error("{0} does not exist or cannot be read (check the path and permissions)")]
+    Unreadable(String),
+    #[error("{0} was not found")]
+    NotFound(String),
 }
 
 /// Highest schema version this build understands. Bump with each migration added.
-pub const SCHEMA_VERSION: u32 = 1;
+pub const SCHEMA_VERSION: u32 = 2;
+
+pub mod docs;
+
+pub use docs::{Doc, SearchHit};
 
 pub struct Db {
     conn: rusqlite::Connection,
@@ -166,6 +176,51 @@ fn migrate(conn: &rusqlite::Connection, from: u32) -> Result<(), DbError> {
         )?;
     }
     // Future: if from < 2 { ... }
+    if from < 2 {
+        conn.execute_batch(
+            r#"
+            BEGIN;
+            PRAGMA user_version = 2;
+            -- Document index (ADR-0005): files live on disk, we store metadata + extracted text.
+            CREATE TABLE documents (
+                id          INTEGER PRIMARY KEY,
+                path        TEXT NOT NULL UNIQUE,
+                title       TEXT NOT NULL DEFAULT '',
+                kind        TEXT NOT NULL DEFAULT 'text',      -- text | binary
+                size_bytes  INTEGER NOT NULL DEFAULT 0,
+                mtime_unix  INTEGER NOT NULL DEFAULT 0,
+                content_hash TEXT NOT NULL DEFAULT '',
+                tags        TEXT NOT NULL DEFAULT '',          -- comma-separated
+                body        TEXT NOT NULL DEFAULT '',          -- extracted plain text
+                status      TEXT NOT NULL DEFAULT 'indexed' CHECK (status IN ('indexed','stale','missing')),
+                added_at    TEXT NOT NULL DEFAULT (datetime('now')),
+                indexed_at  TEXT NOT NULL DEFAULT (datetime('now'))
+            );
+            CREATE INDEX idx_documents_status ON documents(status);
+            -- FTS5 mirror over title/tags/body, keyed by documents.rowid.
+            CREATE VIRTUAL TABLE doc_fts USING fts5(
+                title, tags, body,
+                content='documents', content_rowid='id', tokenize='unicode61'
+            );
+            -- Keep the FTS mirror in sync with the base table.
+            CREATE TRIGGER documents_ai AFTER INSERT ON documents BEGIN
+                INSERT INTO doc_fts(rowid, title, tags, body)
+                VALUES (new.id, new.title, new.tags, new.body);
+            END;
+            CREATE TRIGGER documents_ad AFTER DELETE ON documents BEGIN
+                INSERT INTO doc_fts(doc_fts, rowid, title, tags, body)
+                VALUES ('delete', old.id, old.title, old.tags, old.body);
+            END;
+            CREATE TRIGGER documents_au AFTER UPDATE ON documents BEGIN
+                INSERT INTO doc_fts(doc_fts, rowid, title, tags, body)
+                VALUES ('delete', old.id, old.title, old.tags, old.body);
+                INSERT INTO doc_fts(rowid, title, tags, body)
+                VALUES (new.id, new.title, new.tags, new.body);
+            END;
+            COMMIT;
+            "#,
+        )?;
+    }
     Ok(())
 }
 
@@ -176,7 +231,7 @@ mod tests {
     #[test]
     fn fresh_db_gets_schema_v1() {
         let db = Db::in_memory().unwrap();
-        assert_eq!(db.schema_version(), 1);
+        assert_eq!(db.schema_version(), SCHEMA_VERSION);
     }
 
     #[test]
@@ -214,7 +269,7 @@ mod tests {
             db.create_session("persisted").unwrap();
         }
         let db = Db::open(&path).unwrap();
-        assert_eq!(db.schema_version(), 1);
+        assert_eq!(db.schema_version(), SCHEMA_VERSION);
         assert_eq!(db.list_sessions().unwrap().len(), 1);
     }
 

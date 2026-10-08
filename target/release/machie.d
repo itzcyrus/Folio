@@ -1,0 +1,1 @@
+/workspace/target/release/machie: /workspace/crates/machie-cli/src/main.rs /workspace/crates/machie-cli/src/sessions.rs /workspace/crates/machie-config/src/lib.rs /workspace/crates/machie-db/src/lib.rs
