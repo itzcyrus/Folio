@@ -7,6 +7,30 @@
 
 ---
 
+## 0. Owner Direction — Product Decisions (interview, Oct 2026)
+
+The owner answered a planning interview. These are **owner decisions**, recorded here and
+in ADRs; they refine but do not overturn the frozen spec's spirit. The owner also said
+explicitly: *"I am not sure about many of them since I have no clue what the app might
+turn out like."* So these are treated as **directional, revisitable** — cheap to change
+early, protected by ADR supersession later. Nothing here is a straitjacket.
+
+| # | Question | Owner's answer | What it means for the plan |
+|---|---|---|---|
+| 1 | Endgame vision | **AI workspace / Doc workspace** (both, undecided between them) | Keep both alive: doc store + retrieval is the spine; AI orchestration rides on top. No decision foreclosed. |
+| 2 | First killer feature | **Docs + Search / File search** (content, name, metadata) | Elevates Documents from spec Phase 2 to the **first real user-facing milestone**. Search starts deterministic (FTS5 + filename + metadata), no AI required to be useful. |
+| 3 | UI stack | **CLI/terminal first**, pure-Rust GUI later | Confirms ADR-0002. Extra reason the owner gave: terminal commands are composable, so *other AI models can drive Machie's features via CLI in the future*. Machine-friendly output (`--json`) becomes a design requirement, not an afterthought. |
+| 4 | Platforms | **Linux-first, not Linux-only** | CI/dev on Linux; keep code cross-platform-clean (no Linux-only APIs without fallback). Android = someday, separate structure, explicitly not now. Windows = "meh, not now" — don't break it deliberately, don't chase it. |
+| 5 | AI's role | **Application & code first, AI later.** Mini local models later automate what users did manually. RAG ("you would not want to miss out"), native file-type conversions, Omarchy-system integrations via plugins (yt-dlp downloads etc.) are named future potential. | Confirms deterministic-first ordering. Local inference stays scheduled (v0.3.x+), plugin/tool architecture must anticipate an extension system (Omarchy hooks, yt-dlp) — design tool traits with that in mind, build none early. |
+| 6 | Storage | **SQLite + Files** (don't limit data to DB rows) | Confirms ADR-0004 direction; adds: documents live as files on disk (user-owned paths), SQLite holds index/metadata/sessions. Blob-in-DB only where it clearly wins. |
+| 7 | This turn | **Plan first** (eager for plan+scaffold, but wanted questions finished) | Done incrementally: v0.1.0 scaffold already shipped; this section folds the answers into the roadmap below. |
+
+Naming note: the interviewer referred to the project as "Folio-X"; the repo and owner's
+spec call it **Machie**. Treating "Folio-X" as the reviewer-AI's placeholder name —
+project name stays Machie unless the owner says otherwise.
+
+---
+
 ## 1. My Take on the Project
 
 The old spec describes a **personal AI operating layer**, not a chat UI. Its most valuable
@@ -102,37 +126,53 @@ releasable pieces. ✅ = done, 🚧 = current, ☐ = planned.
   `db-path`, `session new|list|show|note|delete`. Friendly errors, exit code 1, never panics.
   **Phase 0 checkpoint:** done — tagged `v0.1.0`; deviations logged in §5 and here.
 
-### v0.2.x — Core Intelligence (first slice of spec Phase 1)
-- ☐ **0.2.0** Structured Task Protocol types (Part C.4) + error model (Part K.4).
-- ☐ **0.2.1** Intent/Task Router: classification into ANSWER/SEARCH/ACTION, seed the
-  small hand-written eval file with a dozen real examples (sanity check only).
-- ☐ **0.2.2** Provider abstraction traits (Part C.1) + capability-based model registry
-  (Part C.2) — trait-level only, with a mock provider for tests.
-- ☐ **0.2.3** Sessions + workspaces data model (Parts H.1/H.2) persisted in SQLite.
+### v0.2.x — Docs + Search: the first useful feature (owner decision #2; spec Phase 2 pulled forward)
+- ☐ **0.2.0** Document store data model (ADR-0005): files stay on disk at user-chosen
+  paths; SQLite holds `documents` rows (path, size, mtime, mime/kind, title, tags,
+  content hash) + FTS5 index. Rescan/refresh command detects external edits.
+- ☐ **0.2.1** `machie doc add|list|show|remove|tag` CLI, with `--json` output everywhere
+  (owner decision #3: other AI models may drive the CLI later).
+- ☐ **0.2.2** `machie search <query>`: deterministic multi-signal search — full-text
+  (FTS5), filename, metadata/tags; ranked merge; friendly "no results" hints.
+- ☐ **0.2.3** Text extraction for TXT/MD/PDF/DOCX (extraction ADR per dependency choice);
+  native file-type conversions deferred but trait designed for it (owner decision #5).
+- ☐ **0.2.4** Polish release from my own dogfooding: ingest a real folder, use it myself,
+  fix what grates. → tag as the first *feature* release worth pulling.
 
-### v0.3.x — Local Inference (rest of spec Phase 1)
-- ☐ **0.3.0** `LlamaCppProvider` via supervised subprocess (chat completion, streaming,
+### v0.3.x — Core Intelligence (spec Phase 1 slice, now motivated by search)
+- ☐ **0.3.0** Structured Task Protocol types (Part C.4) + error model (Part K.4).
+- ☐ **0.3.1** Intent/Task Router: classification into ANSWER/SEARCH/ACTION wired onto the
+  existing search backend; tiny hand-written eval file as sanity check only.
+- ☐ **0.3.2** Provider abstraction traits (Part C.1) + capability-based model registry
+  (Part C.2) — trait-level only, mock provider included. Design tools/plugins traits so
+  an Omarchy/yt-dlp-style extension system can bolt on later without rework.
+- ☐ **0.3.3** Sessions + workspaces data model (Parts H.1/H.2) persisted in SQLite.
+
+### v0.4.x — Local Inference (rest of spec Phase 1; owner decision #5: "AI later", mini models)
+- ☐ **0.4.0** `LlamaCppProvider` via supervised subprocess (chat completion, streaming,
   cancellation per Part K.3).
-- ☐ **0.3.1** Model runtime basics: load/unload lifecycle, memory estimation (Part K.2).
-- ☐ **0.3.2** CLI chat loop: real ANSWER requests end-to-end, local-only. Execution
+- ☐ **0.4.1** Model runtime basics: load/unload lifecycle, memory estimation (Part K.2).
+- ☐ **0.4.2** CLI chat loop: real ANSWER requests end-to-end, local-only. Execution
   trail printing ("why did Machie do this", Part L.5, CLI edition).
 
-### v0.4.x — Documents (spec Phase 2)
-- ☐ **0.4.0** Ingestion + extraction (TXT/MD first; PDF/DOCX after dependency ADRs).
-- ☐ **0.4.1** Chunking + metadata + provenance (Part G.3).
-- ☐ **0.4.2** FTS5 indexing + basic retrieval + citations (Part G.7).
-- ☐ **0.4.3** Strict source mode (Part G.10 Phase-2 slice). → **MVP checkpoint** begins.
+### v0.5.x — Retrieval Augmentation (spec Phase 2/3 pieces on top of the doc store)
+- ☐ Chunking + provenance over stored docs (Parts G.3/G.7), citations in search answers.
+- ☐ Vector search + hybrid retrieval + reranking (vector index chosen here, ADR).
+- ☐ Strict source mode (Part G.10 Phase-2 slice). → **MVP checkpoint** begins.
 
-### v0.5.x+ — Later phases (spec Phases 3–11), one line each, expanded when reached
-- ☐ Vector search + hybrid retrieval + reranking (Phase 3; vector index chosen here, ADR).
+### v0.6.x+ — Later phases (spec Phases 4–11), one line each, expanded when reached
 - ☐ Deterministic tools + permission system (Phase 5; the one place I keep a few extra
   adversarial spot-checks, since "untrusted input → shell/file ops" is where hobby apps
-  actually get burned — still no formal security-test battery).
+  actually get burned — still no formal security-test battery). Plugin/tool extension
+  system lands here (Omarchy integrations, yt-dlp downloads — named by owner as future).
 - ☐ Web research (Phase 6) — first time anything may leave the machine; disclosure UX (L.6).
 - ☐ Gateway/cloud providers (Phase 7) — only after ADR-0002 constraints verified.
-- ☐ Presentation layer decision (ADR): Tauri 2 + React/TS/Tailwind vs. native Rust GUI.
-  Spec default is Tauri; we revisit once a CLI core is solid. Either way the core stays UI-free.
-- ☐ OpenCode, Voice, Personality Layer, Autonomy (Phases 8–11) — last, always opt-in.
+- ☐ Presentation layer decision (ADR): pure-Rust GUI (egui/Slint) vs. Tauri 2 + React/TS/Tailwind.
+  Owner leans pure-Rust GUI later; spec default is Tauri. Either way the core stays UI-free,
+  and the CLI remains a first-class interface forever (owner decision #3).
+- ☐ Android port = explicitly separate future project (owner decision #4). Windows: don't
+  break deliberately, don't chase. Voice, Personality Layer, Autonomy (Phases 8–11) — last,
+  always opt-in.
 
 ## 4. Environment Notes
 
@@ -170,3 +210,12 @@ releasable pieces. ✅ = done, 🚧 = current, ☐ = planned.
    real quality bar (in place of review), graceful degradation and helpful error UX are
    treated as features (because unattended first-run *is* the test), and the README's
    install/upgrade/uninstall section is mandatory and spoon-fed rather than optional.
+5. **Roadmap reordered: Docs+Search before Core Intelligence/AI** (owner planning
+   interview, Oct 2026 — see §0). The frozen spec builds the router + local inference
+   first (Phase 1) and documents second (Phase 2). The owner picked "Docs + Search /
+   File search" as the ONE first feature and framed AI's role as "application and code
+   first, AI later." So v0.2.x ships a deterministic doc store + multi-signal search,
+   and the router/inference milestones shift to v0.3.x/v0.4.x — where they immediately
+   have something real to search over. This also matches the spec's own spirit ("if a
+   program can do it reliably, use the program") — the search works with zero AI.
+   Reversible via ADR if the endgame tilts firmly toward AI-workspace-first.

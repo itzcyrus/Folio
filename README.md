@@ -77,15 +77,18 @@ the full roadmap.
 
 ✅ **v0.1.0 — Foundation shipped** (Cargo workspace, `machie-config`, `machie-db`,
 `machie` CLI with status/init/config-check/session commands, ADR-0001..0004).
-Next: v0.1.1 release polish (packaging + install docs), then v0.2.x core intelligence.
-See the roadmap in [`docs/PLAN.md`](docs/PLAN.md).
+🎯 Direction set by the owner planning interview: the first real feature is
+**Docs + Search** (deterministic full-text / filename / metadata search over your files)
+— AI comes later, as an accelerator on top of solid app logic.
+Next: v0.2.x doc store + `machie search`. Full roadmap in [`docs/PLAN.md`](docs/PLAN.md).
 
 ```
 v0.1.x  Foundation (workspace, ADRs, config, database, `machie` CLI)   ← you are here
-v0.2.x  Core intelligence (structured tasks, ANSWER/SEARCH/ACTION router, provider traits)
-v0.3.x  Local inference (llama.cpp provider, runtime basics, CLI chat)
-v0.4.x  Documents (ingestion, chunking, FTS5, citations) → MVP checkpoint
-v0.5.x+ RAG → tools & permissions → web → gateways → presentation layer → everything else
+v0.2.x  Docs + Search (doc store, `machie doc`, multi-signal `machie search`)
+v0.3.x  Core intelligence (structured tasks, ANSWER/SEARCH/ACTION router, provider traits)
+v0.4.x  Local inference (llama.cpp provider, runtime basics, CLI chat)
+v0.5.x  Retrieval augmentation (chunking, citations, vector/hybrid search) → MVP checkpoint
+v0.6.x+ Tools & permissions → web → gateways → GUI (pure-Rust vs Tauri via ADR) → everything else
 ```
 
 ## Getting Machie (Install / Upgrade / Uninstall)
