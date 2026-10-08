@@ -19,12 +19,13 @@ and roadmap. We rebuild against it incrementally instead of trying to implement 
 
 Mature and sensible: **one feature at a time, small updates, steadily to completion.**
 
-1. Pick one milestone from the plan → implement → test → review → hard gates pass → release.
+1. Pick one milestone from the plan → implement → `cargo build && cargo test` green → release.
 2. Every architecturally significant decision gets an ADR before it becomes code.
-3. Nothing ships until `cargo build` / `cargo test` / `cargo clippy -D warnings` /
-   `cargo fmt --check` are all green. No fake functionality, no stubs presented as done.
-4. The router (the most consequential component) is guarded by golden eval sets under
-   `evals/router/` — accuracy can never silently regress.
+3. Testing is minimal and pragmatic — unit tests where they're free, smoke tests per
+   crate, no test batteries, no coverage targets, no eval-accuracy gates. This is a
+   single-user hobby app: bugs get discovered by *using* it and fixed as PATCH releases.
+4. The router keeps a tiny hand-written sanity-check file under `evals/router/` that I
+   can run manually — it informs development but never blocks a release.
 
 ## Principles (from the spec, kept non-negotiable)
 
@@ -78,9 +79,7 @@ Requires a Rust toolchain (`rustup`). Once the workspace exists:
 
 ```sh
 cargo build            # build
-cargo test             # run tests
-cargo clippy --all-targets -- -D warnings
-cargo fmt --check
+cargo test             # run tests (the only gate)
 ```
 
 (Toolchain setup steps land with milestone v0.1.0.)
