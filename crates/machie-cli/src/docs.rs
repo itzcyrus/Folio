@@ -64,6 +64,11 @@ pub enum DocCmd {
         #[arg(long)]
         json: bool,
     },
+    /// Aggregate counts across everything Machie knows about
+    Stats {
+        #[arg(long)]
+        json: bool,
+    },
 }
 
 #[derive(Subcommand)]
@@ -75,6 +80,12 @@ pub enum SearchCmd {
         /// Maximum number of results
         #[arg(long, default_value_t = 10)]
         limit: usize,
+        /// Restrict to a document kind (repeatable): text, binary
+        #[arg(long = "type", value_name = "KIND")]
+        kinds: Vec<String>,
+        /// Only search inside these paths (comma-separated prefixes)
+        #[arg(long, value_name = "PREFIXES")]
+        in_paths: Option<String>,
         #[arg(long)]
         json: bool,
     },
@@ -147,7 +158,7 @@ fn human_size(bytes: i64) -> String {
     }
 }
 
-/// Resolve "12" or "/some/path.txt" to a Doc.
+/// Resolve "12", "/some/path.txt" or a bare filename like "todo.txt" to a Doc.
 fn resolve(db: &Db, reference: &str) -> Result<Doc, Box<dyn std::error::Error>> {
     if let Ok(id) = reference.parse::<i64>() {
         if let Some(d) = db.get_document(id)? {
@@ -158,10 +169,28 @@ fn resolve(db: &Db, reference: &str) -> Result<Doc, Box<dyn std::error::Error>> 
     if let Some(d) = db.get_document_by_path(&p)? {
         return Ok(d);
     }
-    Err(format!(
-        "no indexed document matches '{reference}' (try `machie doc list`)"
-    )
-    .into())
+    // Fall back to matching the basename against indexed titles (e.g. `doc show todo.txt`).
+    let wanted = reference.to_lowercase();
+    let by_name: Vec<Doc> = db
+        .list_documents()?
+        .into_iter()
+        .filter(|d| d.title.to_lowercase() == wanted)
+        .collect();
+    match by_name.len() {
+        1 => Ok(by_name.into_iter().next().unwrap()),
+        0 => Err(format!(
+            "no indexed document matches '{reference}' (try `machie doc list`)"
+        )
+        .into()),
+        n => {
+            let paths: Vec<&str> = by_name.iter().map(|d| d.path.as_str()).collect();
+            Err(format!(
+                "{n} indexed documents are named '{reference}' — disambiguate with the id or full path: {}",
+                paths.join(", ")
+            )
+            .into())
+        }
+    }
 }
 
 pub fn run_doc(action: DocCmd, db: &Db) -> Result<(), Box<dyn std::error::Error>> {
@@ -287,15 +316,68 @@ pub fn run_doc(action: DocCmd, db: &Db) -> Result<(), Box<dyn std::error::Error>
                 );
             }
         }
+        DocCmd::Stats { json } => {
+            let _ = db.refresh_documents()?;
+            let by_kind = db.doc_counts()?;
+            let total_docs: i64 = by_kind.iter().map(|(_, c)| c).sum();
+            let (sessions, messages) = match db.global_counts() {
+                Ok(c) => (c.sessions, c.messages),
+                Err(e) => return Err(e.into()),
+            };
+            if json {
+                print_json(&serde_json::json!({
+                    "documents": {
+                        "total": total_docs,
+                        "by_kind": by_kind.iter().map(|(k, c)| serde_json::json!({ "kind": k, "count": c })).collect::<Vec<_>>(),
+                    },
+                    "sessions": sessions,
+                    "messages": messages,
+                }));
+            } else {
+                println!("Machie stats");
+                println!("  documents : {total_docs}");
+                for (k, c) in &by_kind {
+                    println!("    - {k:<8} {c}");
+                }
+                println!("  sessions  : {sessions}");
+                println!("  messages  : {messages}");
+            }
+        }
     }
     Ok(())
 }
 
 pub fn run_search(action: SearchCmd, db: &Db) -> Result<(), Box<dyn std::error::Error>> {
     match action {
-        SearchCmd::Query { query, limit, json } => {
+        SearchCmd::Query { query, limit, kinds, in_paths, json } => {
             let _ = db.refresh_documents()?;
-            let hits = db.search_documents(&query, limit)?;
+            let kind_refs: Vec<&str> = kinds.iter().map(|s| s.as_str()).collect();
+            for k in &kind_refs {
+                if *k != "text" && *k != "binary" {
+                    return Err(format!(
+                        "unknown document type '{k}' (known: text, binary — see `machie doc list`)"
+                    )
+                    .into());
+                }
+            }
+            let prefixes: Vec<String> = in_paths
+                .as_deref()
+                .map(|s| {
+                    s.split(',')
+                        .map(|p| p.trim().to_string())
+                        .filter(|p| !p.is_empty())
+                        .collect()
+                })
+                .unwrap_or_default();
+            let mut hits = db.search_documents_filtered(&query, limit * 2 + 10, &kind_refs)?;
+            if !prefixes.is_empty() {
+                hits.retain(|h| {
+                    prefixes
+                        .iter()
+                        .any(|p| h.doc.path.starts_with(p) || h.doc.title.contains(p))
+                });
+            }
+            hits.truncate(limit);
             if json {
                 let out: Vec<HitJson> = hits
                     .iter()
@@ -314,6 +396,9 @@ pub fn run_search(action: SearchCmd, db: &Db) -> Result<(), Box<dyn std::error::
                 println!("No matches for \"{query}\".");
                 println!("Hints: fewer words, try a prefix (e.g. 'panca' finds 'pancakes'),");
                 println!("       check coverage with `machie doc list`, or add files first.");
+                if !kinds.is_empty() || !prefixes.is_empty() {
+                    println!("       note: your --type/--in-paths filters may have excluded everything.");
+                }
             } else {
                 for (i, h) in hits.iter().enumerate() {
                     let flags = match (h.name_match, h.tag_match) {

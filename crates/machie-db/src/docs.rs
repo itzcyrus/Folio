@@ -46,6 +46,13 @@ pub struct RefreshReport {
     pub missing: usize,
 }
 
+/// Table-wide counts for `machie stats`.
+#[derive(Debug, Default, serde::Serialize)]
+pub struct GlobalCounts {
+    pub sessions: i64,
+    pub messages: i64,
+}
+
 impl Db {
     /// Add (or refresh) a document at `path`. Returns the row id.
     /// Extraction of non-UTF8/binary files yields an empty body but still indexes metadata.
@@ -203,9 +210,9 @@ impl Db {
         Ok(rep)
     }
 
-    /// Deterministic multi-signal search (v0.2.2): FTS5 bm25 over title/tags/body,
+    /// Deterministic multi-signal ranking core (v0.2.2): FTS5 bm25 over title/tags/body,
     /// merged with filename and tag match boosts. Empty/whitespace queries return [].
-    pub fn search_documents(&self, query: &str, limit: usize) -> Result<Vec<SearchHit>, DbError> {
+    fn search_ranked(&self, query: &str, fetch: usize) -> Result<Vec<SearchHit>, DbError> {
         let q = query.trim();
         if q.is_empty() {
             return Ok(Vec::new());
@@ -222,7 +229,7 @@ impl Db {
         );
         let mut stmt = self.conn.prepare(&sql)?;
         let lower_q = q.to_lowercase();
-        let rows = stmt.query_map(params![fts_query, limit as i64], |r| {
+        let rows = stmt.query_map(params![fts_query, fetch as i64], |r| {
             Ok((r.get::<_, i64>(0)?, r.get::<_, f64>(1)?, r.get::<_, String>(2)?))
         })?;
 
@@ -254,6 +261,52 @@ impl Db {
             key(a).partial_cmp(&key(b)).unwrap_or(std::cmp::Ordering::Equal)
         });
         Ok(hits)
+    }
+
+    /// Ranked search with optional kind filtering applied *after* ranking so the
+    /// relative order of surviving hits is unchanged. Empty/whitespace queries return [].
+    pub fn search_documents_filtered(
+        &self,
+        query: &str,
+        limit: usize,
+        kinds: &[&str],
+    ) -> Result<Vec<SearchHit>, DbError> {
+        let over = if kinds.is_empty() { limit } else { limit * 4 + 20 };
+        let all = self.search_ranked(query, over.max(limit))?;
+        let mut hits: Vec<SearchHit> = if kinds.is_empty() {
+            all
+        } else {
+            all.into_iter()
+                .filter(|h| kinds.contains(&h.doc.kind.as_str()))
+                .collect()
+        };
+        hits.truncate(limit);
+        Ok(hits)
+    }
+
+    /// Unfiltered convenience wrapper (kept for tests and simple callers).
+    pub fn search_documents(&self, query: &str, limit: usize) -> Result<Vec<SearchHit>, DbError> {
+        self.search_documents_filtered(query, limit, &[])
+    }
+
+    /// Count documents per kind (for `machie stats`).
+    pub fn doc_counts(&self) -> Result<Vec<(String, i64)>, DbError> {
+        let mut stmt = self
+            .conn
+            .prepare("SELECT kind, COUNT(*) FROM documents GROUP BY kind ORDER BY kind")?;
+        let rows = stmt.query_map([], |r| Ok((r.get::<_, String>(0)?, r.get::<_, i64>(1)?)))?;
+        Ok(rows.collect::<Result<Vec<_>, _>>()?)
+    }
+
+    /// Aggregate counts (for `machie stats`).
+    pub fn global_counts(&self) -> Result<GlobalCounts, DbError> {
+        let sessions: i64 = self
+            .conn
+            .query_row("SELECT COUNT(*) FROM session", [], |r| r.get(0))?;
+        let messages: i64 = self
+            .conn
+            .query_row("SELECT COUNT(*) FROM message", [], |r| r.get(0))?;
+        Ok(GlobalCounts { sessions, messages })
     }
 }
 
@@ -562,6 +615,57 @@ mod tests {
             let res = db.search_documents(q, 5);
             assert!(res.is_ok(), "query {q:?} errored: {:?}", res.err());
         }
+    }
+
+    #[test]
+    fn search_kind_filter_preserves_relative_ranking() {
+        let db = Db::in_memory().unwrap();
+        let dir = tempfile::tempdir().unwrap();
+        let a = write_file(dir.path(), "a.txt", "quantum notes about entanglement");
+        let b = write_file(dir.path(), "b.txt", "quantum also appears here");
+        let c = write_file(dir.path(), "c.png", "\u{fffd}\u{fffd}binary\u{fffd}"); // non-UTF8 -> kind=binary
+        std::fs::write(&c, [0xffu8, 0xfe, 0x00, 0x01]).unwrap();
+        let ia = db.add_document(&a, None).unwrap();
+        let _ib = db.add_document(&b, None).unwrap();
+        let ic = db.add_document(&c, None).unwrap();
+        db.set_tags(ic, "quantum").unwrap(); // binary doc matches the query via tags
+
+        let unfiltered = db.search_documents("quantum", 10).unwrap();
+        assert_eq!(unfiltered.len(), 3, "all three should match: {:?}", titles(&unfiltered));
+
+        let text_only = db.search_documents_filtered("quantum", 10, &["text"]).unwrap();
+        assert_eq!(text_only.len(), 2);
+        // relative order of surviving docs must be unchanged by the filter
+        let order_unf: Vec<i64> = unfiltered.iter().map(|h| h.doc.id).filter(|id| *id != ic).collect();
+        let order_f: Vec<i64> = text_only.iter().map(|h| h.doc.id).collect();
+        assert_eq!(order_unf, order_f);
+        assert!(text_only.iter().all(|h| h.doc.kind == "text"));
+
+        let bin_only = db.search_documents_filtered("quantum", 10, &["binary"]).unwrap();
+        assert_eq!(bin_only.len(), 1);
+        assert_eq!(bin_only[0].doc.id, ic);
+
+        // limit respected after filtering
+        assert_eq!(db.search_documents_filtered("quantum", 1, &["text"]).unwrap().len(), 1);
+        assert_eq!(ia, ia); // id sanity
+    }
+
+    fn titles(hits: &[crate::docs::SearchHit]) -> Vec<String> {
+        hits.iter().map(|h| h.doc.title.clone()).collect()
+    }
+
+    #[test]
+    fn counts_helpers() {
+        let db = Db::in_memory().unwrap();
+        let dir = tempfile::tempdir().unwrap();
+        let f = write_file(dir.path(), "n.txt", "hello");
+        db.add_document(&f, None).unwrap();
+        db.create_session("s1").unwrap();
+        db.add_message(1, "user", "hi").unwrap();
+        let kinds = db.doc_counts().unwrap();
+        assert_eq!(kinds, vec![("text".to_string(), 1)]);
+        let g = db.global_counts().unwrap();
+        assert_eq!((g.sessions, g.messages), (1, 1));
     }
 
     #[test]
